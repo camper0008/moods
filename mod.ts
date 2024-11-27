@@ -6,11 +6,23 @@ type Timestamp = {
   minute: number;
 };
 
+type Tag = string;
+
 type Note = {
-  tags: string[];
+  tags: Tag[];
   comment: string;
   timestamp: Timestamp;
 };
+
+export function tags(notes: Note[]): Tag[] {
+  const tags = new Set<Tag>();
+  for (const note of notes) {
+    for (const tag of note.tags) {
+      tags.add(tag);
+    }
+  }
+  return tags.keys().toArray();
+}
 
 function formatTimestamp(value: number, type: keyof Timestamp): string {
   switch (type) {
@@ -57,7 +69,7 @@ export async function writeNote({ timestamp, comment, tags }: Note) {
 }
 
 type FileNote = {
-  tags: string[];
+  tags: Tag[];
   comment: string;
 };
 
