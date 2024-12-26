@@ -12,12 +12,22 @@ export type Time = {
 };
 
 export type MoodEntry = {
+  type: "mood";
   mood: Mood;
   comment: string;
+} & Timed;
+
+export type SleepEntry = {
+  type: "sleep";
+  sleep: "wake_up" | "sleep";
+  comment: string;
+} & Timed;
+
+type Timed = {
   time: Time;
 };
 
-export function moodCompare(left: MoodEntry, right: MoodEntry): -1 | 0 | 1 {
+export function timeCompare(left: Timed, right: Timed): -1 | 0 | 1 {
   const keys: (keyof Time)[] = ["year", "month", "date", "hour", "minute"];
   for (const key of keys) {
     if (left.time[key] > right.time[key]) {
@@ -31,9 +41,13 @@ export function moodCompare(left: MoodEntry, right: MoodEntry): -1 | 0 | 1 {
   return 0;
 }
 
-export interface MoodTracker {
-  trackMood(mood: MoodEntry): Promise<"ok" | "error">;
+export interface Tracker {
+  trackMood(entry: MoodEntry): Promise<"ok" | "error">;
   moods(): Promise<
     { type: "ok"; moods: MoodEntry[] } | { type: "error"; errors: string[] }
+  >;
+  trackSleep(entry: SleepEntry): Promise<"ok" | "error">;
+  sleep(): Promise<
+    { type: "ok"; sleep: SleepEntry[] } | { type: "error"; errors: string[] }
   >;
 }

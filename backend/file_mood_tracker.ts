@@ -1,4 +1,5 @@
-import { MoodEntry, MoodTracker, Time } from "./mod.ts";
+import * as path from "jsr:@std/path";
+import { MoodEntry, SleepEntry, Time, Tracker } from "./mod.ts";
 
 function pad(entry: number, length: number = 2): string {
   return entry.toString().padStart(length, "0");
@@ -15,7 +16,12 @@ function padTime(entry: Time): { [key in keyof Time]: string } {
   };
 }
 
-function prepareFileName(entry: MoodEntry): string {
+function prepareSleepName(entry: SleepEntry): string {
+  const { year, month, date, hour, minute } = padTime(entry.time);
+  return `sleep_${year}-${month}-${date}-${hour}-${minute}.json`;
+}
+
+function prepareMoodName(entry: MoodEntry): string {
   let status: "manic" | "euthymic" | "depressed";
   if (entry.mood > 0) {
     status = "manic";
@@ -28,24 +34,29 @@ function prepareFileName(entry: MoodEntry): string {
   return `mood_${year}-${month}-${date}-${hour}-${minute}_${status}.json`;
 }
 
-export class FileMoodTracker implements MoodTracker {
-  private dirPath: string;
-  private constructor(dirPath: string) {
-    this.dirPath = dirPath;
+type FileTrackerOptions = { moodDir: string; sleepDir: string };
+
+export class FileTracker implements Tracker {
+  private moodDir: string;
+  private sleepDir: string;
+  private constructor({ moodDir, sleepDir }: FileTrackerOptions) {
+    this.moodDir = moodDir;
+    this.sleepDir = sleepDir;
   }
-  public static async new(dirPath: string) {
+  public static async new({ moodDir, sleepDir }: FileTrackerOptions) {
     try {
-      await Deno.mkdir(dirPath);
+      await Deno.mkdir(moodDir);
+      await Deno.mkdir(sleepDir);
     } catch (err) {
       if (!(err instanceof Deno.errors.AlreadyExists)) {
         throw err;
       }
     }
-    return new FileMoodTracker(dirPath);
+    return new FileTracker({ moodDir, sleepDir });
   }
   async trackMood(entry: MoodEntry): Promise<"ok" | "error"> {
-    const fileName = prepareFileName(entry);
-    const filePath = path.join(this.dirPath, fileName);
+    const fileName = prepareMoodName(entry);
+    const filePath = path.join(this.moodDir, fileName);
     await Deno.writeTextFile(filePath, JSON.stringify(entry));
     return "ok";
   }
@@ -54,14 +65,14 @@ export class FileMoodTracker implements MoodTracker {
   > {
     const moods = [];
     const errors = [];
-    const entries = Deno.readDir(this.dirPath);
+    const entries = Deno.readDir(this.moodDir);
     for await (const entry of entries) {
       if (!entry.isFile) {
         errors.push(`entry "${entry.name}" is not a file`);
         continue;
       }
       const mood = JSON.parse(
-        await Deno.readTextFile(path.join(this.dirPath, entry.name)),
+        await Deno.readTextFile(path.join(this.moodDir, entry.name)),
       );
       moods.push(mood);
     }
@@ -69,6 +80,35 @@ export class FileMoodTracker implements MoodTracker {
       return { type: "error", errors };
     } else {
       return { type: "ok", moods };
+    }
+  }
+
+  async trackSleep(entry: SleepEntry): Promise<"ok" | "error"> {
+    const fileName = prepareSleepName(entry);
+    const filePath = path.join(this.sleepDir, fileName);
+    await Deno.writeTextFile(filePath, JSON.stringify(entry));
+    return "ok";
+  }
+  async sleep(): Promise<
+    { type: "ok"; sleep: SleepEntry[] } | { type: "error"; errors: string[] }
+  > {
+    const sleep = [];
+    const errors = [];
+    const entries = Deno.readDir(this.sleepDir);
+    for await (const entry of entries) {
+      if (!entry.isFile) {
+        errors.push(`entry "${entry.name}" is not a file`);
+        continue;
+      }
+      const mood = JSON.parse(
+        await Deno.readTextFile(path.join(this.sleepDir, entry.name)),
+      );
+      sleep.push(mood);
+    }
+    if (errors.length > 0) {
+      return { type: "error", errors };
+    } else {
+      return { type: "ok", sleep };
     }
   }
 }

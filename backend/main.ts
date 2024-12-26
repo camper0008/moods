@@ -1,18 +1,22 @@
 import { Application } from "jsr:@oak/oak/application";
 import { Router } from "jsr:@oak/oak/router";
-import { moodCompare, MoodEntry, MoodTracker } from "./mod.ts";
-import { FileMoodTracker } from "./file_mood_tracker.ts";
+import { MoodEntry, SleepEntry, timeCompare, Tracker } from "./mod.ts";
+import { FileTracker } from "./file_mood_tracker.ts";
 
-type TrackBody = MoodEntry & {
+type TrackMoodBody = MoodEntry & {
   secret: string;
 };
 
-async function listen(port: number, database: MoodTracker) {
+type TrackSleepBody = SleepEntry & {
+  secret: string;
+};
+
+async function listen(port: number, database: Tracker) {
   const secret = prompt("enter secret:");
 
   const routes = new Router();
   routes.post("/track_mood", async (ctx) => {
-    const body: TrackBody = await ctx.request.body.json();
+    const body: TrackMoodBody = await ctx.request.body.json();
     if (body.secret !== secret) {
       ctx.response.body = { type: "error", msg: "bad secret" };
       return;
@@ -21,10 +25,31 @@ async function listen(port: number, database: MoodTracker) {
     ctx.response.body = { type: "ok" };
   });
 
+  routes.post("/track_sleep", async (ctx) => {
+    const body: TrackSleepBody = await ctx.request.body.json();
+    if (body.secret !== secret) {
+      ctx.response.body = { type: "error", msg: "bad secret" };
+      return;
+    }
+    await database.trackSleep(body);
+    ctx.response.body = { type: "ok" };
+  });
+
   routes.get("/moods", async (ctx) => {
     const moods = await database.moods().then((result) =>
       result.type === "ok"
-        ? result.moods.toSorted(moodCompare)
+        ? result.moods.toSorted(timeCompare)
+        : `${result.errors.length} error(s) occurred:\n- ${
+          result.errors.join("\n- ")
+        }`
+    );
+    ctx.response.body = { type: "ok", moods };
+  });
+
+  routes.get("/sleep", async (ctx) => {
+    const moods = await database.sleep().then((result) =>
+      result.type === "ok"
+        ? result.sleep.toSorted(timeCompare)
         : `${result.errors.length} error(s) occurred:\n- ${
           result.errors.join("\n- ")
         }`
@@ -46,7 +71,13 @@ async function main() {
     if (isNaN(port)) {
       console.error(`invalid port "${Deno.args[0]}"`);
     }
-    await listen(port, await FileMoodTracker.new("mood_entries"));
+    await listen(
+      port,
+      await FileTracker.new({
+        moodDir: "mood_entries",
+        sleepDir: "sleep_entries",
+      }),
+    );
   } catch {
     console.error(`invalid port "${Deno.args[0]}"`);
   }
